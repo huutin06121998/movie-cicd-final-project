@@ -1,0 +1,125 @@
+# Name of the GitHub Actions workflow
+name: 'CICD Frontend CD test'
+
+# Define events that trigger the workflow
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'starter/frontend/**'  # Trigger only when changes occur in the frontend directory
+  workflow_dispatch:  # Allows manual triggering of the workflow
+
+# Define jobs to be run in the workflow
+jobs:
+  test-lint-job:
+    name: 'test Lint job'  
+    runs-on: ubuntu-latest 
+
+    steps:
+      - name: Checkout code  
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
+      - name: Restore cache  
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies 
+        run: |
+          cd ./starter/frontend
+          npm install
+
+      - name: Install prettier  
+        run: |
+          cd ./starter/frontend 
+          npm install prettier@2.8.8 --save-dev
+
+      - name: Run lint check 
+        run: |
+          cd ./starter/frontend
+          npm run lint
+
+  test-test-job:
+    name: 'Test Job process'  
+    runs-on: ubuntu-latest  
+    needs: cd-lint-job 
+
+    steps:
+      - name: Checkout code  
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js  
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
+      - name: Restore cache  
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies 
+        run: |
+          cd ./starter/frontend
+          npm install
+
+      - name: Install prettier 
+        run: |
+          cd ./starter/frontend 
+          npm install prettier@2.8.8 --save-dev
+
+      - name: Run tests  
+        run: |
+          cd ./starter/frontend
+          npm run test
+
+  build:
+    needs: [test-lint-job, test-test-job]  
+    runs-on: ubuntu-latest  
+
+    steps:
+      - name: Checkout code  
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials 
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: ECR Login  
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          registry: 098159521417.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Build Docker image  
+        run: |
+          cd ./starter/frontend
+          docker build -t frontend:${GITHUB_SHA::7} --build-arg REACT_APP_MOVIE_API_URL=${{ vars.REACT_APP_MOVIE_API_URL }} .
+      
+      - name: Tag Docker Image 
+        run: |
+          docker tag frontend:${GITHUB_SHA::7} 098159521417.dkr.ecr.us-east-1.amazonaws.com/frontend:${GITHUB_SHA::7}
+
+      - name: Push Docker image to ECR  
+        run: |
+          docker push 098159521417.dkr.ecr.us-east-1.amazonaws.com/frontend:${GITHUB_SHA::7}
+      
+      - name: Kubeconfig Auth  
+        run: |
+          aws eks update-kubeconfig --name cluster --region us-east-1
+
+      - name: Deploy to Kubernetes 
+        run: |
+          cd ./starter/frontend/k8s
+          kustomize edit set image frontend=098159521417.dkr.ecr.us-east-1.amazonaws.com/frontend:${GITHUB_SHA::7}
+          kustomize build | kubectl apply -f -

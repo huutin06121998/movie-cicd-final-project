@@ -1,0 +1,117 @@
+# Name of the GitHub Actions workflow
+name: 'CICD Backend CD test'
+
+# Define events that trigger the workflow
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'starter/backend/**'  # Trigger only when changes occur in the backend
+  workflow_dispatch:  # Allows manual triggering
+
+# Define jobs to be run in the workflow
+jobs:
+  test-lint-job:
+    name: 'Test Lint job'  
+    runs-on: ubuntu-latest 
+
+    steps:
+      - name: Checkout code  
+        uses: actions/checkout@v3
+
+      - name: Set up Python  
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+
+      - name: Restore cache 
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/Pipfile.lock') }}
+          
+      - name: Install dependencies  
+        run: |
+          cd ./starter/backend
+          python -m pip install --upgrade pip
+          pip install pipenv
+          pipenv install --dev
+      
+      - name: Run lint check  
+        run: cd ./starter/backend && pipenv run lint
+
+  test-test-job:
+    name: 'Test Job'  
+    runs-on: ubuntu-latest  
+    needs: cd-lint-job 
+
+    steps:
+      - name: Checkout code  
+        uses: actions/checkout@v3
+
+      - name: Set up Python 
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+
+      - name: Restore cache  
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/Pipfile.lock') }}
+          
+      - name: Install dependencies  
+        run: |
+          cd ./starter/backend
+          python -m pip install --upgrade pip
+          pip install pipenv
+          pipenv install --dev
+
+      - name: Run tests  
+        run: |
+          cd ./starter/backend 
+          pipenv run test
+
+  build:
+    needs: [test-lint-job, test-test-job]  
+    runs-on: ubuntu-latest 
+
+    steps:
+      - name: Checkout code 
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials 
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: ECR Login  
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          registry: 155614359981.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Build Docker image 
+        run: |
+          cd ./starter/backend
+          docker build -t backend:${GITHUB_SHA::7} .
+      
+      - name: Tag Docker Image  
+        run: |
+          docker tag backend:${GITHUB_SHA::7} 098159521417.dkr.ecr.us-east-1.amazonaws.com/backend:${GITHUB_SHA::7}
+
+      - name: Push Docker image to ECR  
+        run: |
+          docker push 098159521417.dkr.ecr.us-east-1.amazonaws.com/backend:${GITHUB_SHA::7}
+      
+      - name: Kubeconfig Auth  
+        run: |
+          aws eks update-kubeconfig --name cluster --region us-east-1
+
+      - name: Deploy to Kubernetes 
+        run: |
+          cd ./starter/backend/k8s
+          kustomize edit set image backend=098159521417.dkr.ecr.us-east-1.amazonaws.com/backend:${GITHUB_SHA::7}
+          kustomize build | kubectl apply -f -

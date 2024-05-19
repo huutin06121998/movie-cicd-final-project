@@ -1,0 +1,86 @@
+# Name of the GitHub Actions workflow
+name: 'CICD Backend CI test'
+
+# Define events that trigger the workflow
+on:
+  workflow_dispatch:  # Allows manual triggering of the workflow
+
+  pull_request:  # Triggers the workflow on pull requests to the main branch
+    branches:
+      - main
+
+# Define jobs to be run in the workflow
+jobs:
+  test-lint-job:
+    name: 'Test Linting job'  
+    runs-on: ubuntu-latest  
+
+    steps:
+      - name: checkout source code  
+        uses: actions/checkout@v3
+
+      - name: Set up Python  
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+
+      - name: Restore cache  
+        uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          
+      - name: Install dependencies  
+        run: |
+          cd ./starter/backend
+          python -m pip install --upgrade pip
+          pip install pipenv
+          pipenv install --dev
+
+      - name: Run lint check source  
+        run: cd ./starter/backend && pipenv run lint
+
+  test-test-job:
+    name: 'Test Runner Job' 
+    runs-on: ubuntu-latest  
+
+    steps:
+      - name: checkout code  
+        uses: actions/checkout@v3
+
+      - name: Set up Python  
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+
+      - name: Restore cache  
+        uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          
+      - name: Install dependencies  
+        run: |
+          cd ./starter/backend
+          python -m pip install --upgrade pip
+          pip install pipenv
+          pipenv install pytest --dev
+          pipenv install --dev
+
+      - name: Run tests 
+        run: |
+          cd ./starter/backend 
+          pipenv run test
+
+  build:
+    needs: [test-lint-job, test-test-job]  
+    runs-on: ubuntu-latest  
+
+    steps:
+      - name: checkout code  
+        uses: actions/checkout@v3
+
+      - name: Build Docker Image  
+        run: |
+          cd ./starter/backend
+          docker build -t backend .

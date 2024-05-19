@@ -1,0 +1,105 @@
+# Name of the GitHub Actions workflow
+name: 'CICD Frontend CI test'
+
+# Define events that trigger the workflow
+on:
+  workflow_dispatch:  # Allows manual triggering of the workflow
+
+  pull_request:  # Triggers the workflow on pull requests to the main branch
+    branches:
+      - main
+
+# Define jobs to be run in the workflow
+jobs:
+  test-lint-job:
+    name: Linting job test process
+    runs-on: ubuntu-latest  
+
+    steps:
+      - name: checkout code  
+        uses: actions/checkout@v3
+
+      - name: Setup nodejs  
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
+      - name: Cache dependencies  
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: deps-node-modules-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies  
+        run: cd ./starter/frontend && npm install
+
+      - name: Install prettier  
+        run: |
+          cd ./starter/frontend 
+          npm install prettier@2.8.8 --save-dev
+
+      - name: Run lint check  
+        run: cd ./starter/frontend && npm run lint
+
+  test-test-job:
+    name: Testing job process
+    runs-on: ubuntu-latest  
+
+    steps:
+      - name: checkout code  
+        uses: actions/checkout@v3
+
+      - name: Setup nodejs  
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
+      - name: Cache dependencies  
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: deps-node-modules-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies  
+        run: cd ./starter/frontend && npm install
+
+      - name: Run test  
+        run: cd ./starter/frontend && npm run test
+
+  build:
+    needs: [test-lint-job, test-test-job]  
+    runs-on: ubuntu-latest  
+
+    steps:
+      - name: checkout code  
+        uses: actions/checkout@v3
+
+      - name: Setup nodejs  
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+      
+      - name: Cache dependencies  
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: deps-node-modules-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install prettier  
+        run: |
+          cd ./starter/frontend 
+          npm install prettier@2.8.8 --save-dev
+
+      - name: Install dependencies  
+        run: cd ./starter/frontend && npm install
+
+      - name: Run test  
+        run: cd ./starter/frontend && npm run test
+      
+      - name: Build Docker Image  
+        run: |
+          cd ./starter/frontend
+          docker build -t frontend .
