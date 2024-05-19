@@ -5,6 +5,6 @@ resources:
 - deployment.yaml
 namespace: default
 images:
-- name: backend
+- name: frontend
   newName: 098159521417.dkr.ecr.us-east-1.amazonaws.com/backend
   newTag: latest
