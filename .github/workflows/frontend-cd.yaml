@@ -49,7 +49,7 @@ jobs:
   test-test-job:
     name: 'Test Job process'  
     runs-on: ubuntu-latest  
-    needs: cd-lint-job 
+    needs: test-lint-job 
 
     steps:
       - name: Checkout code  
